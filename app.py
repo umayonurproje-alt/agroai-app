@@ -408,9 +408,11 @@ def classes():
     return jsonify(result)
 
 
-# ─── Başlat ────────────────────────────────────────────────────────────────
+# ─── Modelleri Yükle (Gunicorn/Üretim ortamı için) ──────────────────────────
+load_models()
+
+# ─── Başlat (Yerel Geliştirme İçin) ────────────────────────────────────────
 if __name__ == "__main__":
-    load_models()
     print("\n🌿 AgroAI — Bitki Hastalığı Tespiti")
     if models:
         for name, m in models.items():
