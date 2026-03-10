@@ -270,9 +270,19 @@ def serve_sw():
 
 @app.route("/")
 def index():
-    model_ready = len(models) > 0
-    num_classes = sum(len(m["class_names"]) for m in models.values())
-    num_models = len(models)
+    if models:
+        model_ready = len(models) > 0
+        num_classes = sum(len(m["class_names"]) for m in models.values())
+        num_models = len(models)
+    else:
+        # Lazy loading durumu: Dosyalar diskte varsa hazırdır
+        has_plant = any(p.exists() for p in PLANT_MODEL_PATHS)
+        has_indoor = INDOOR_MODEL_PATH.exists()
+        model_ready = has_plant or has_indoor
+        num_models = (1 if has_plant else 0) + (1 if has_indoor else 0)
+        # Sınıf sayılarını tahmin et (38 tarla + 29 ev = 67)
+        num_classes = 67 
+
     return render_template("index.html", model_ready=model_ready,
                          num_classes=num_classes, num_models=num_models)
 
