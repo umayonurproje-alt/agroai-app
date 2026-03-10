@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="tr">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AgroAI - Bitki Hastalığı Tespiti</title>
+  <meta name="description"
+    content="Yapay zeka destekli bitki hastalığı tespit uygulaması. Kamera veya fotoğraf ile anında teşhis." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;700&display=swap"
+    rel="stylesheet" />
+  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="manifest" href="/static/manifest.json" />
+  <meta name="theme-color" content="#10b981" />
+  <link rel="apple-touch-icon" href="/static/icons/icon-512x512.svg">
+</head>
+
+<body>
+
+  <!-- ── Animated background ─────────────────────────────── -->
+  <div class="bg-orbs">
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+  </div>
+
+  <!-- ── Nav ─────────────────────────────────────────────── -->
+  <nav class="navbar">
+    <div class="nav-brand">
+      <span class="nav-icon">🌿</span>
+      <span class="nav-title">AgroAI</span>
+    </div>
+    <div class="nav-badge {% if model_ready %}badge-ready{% else %}badge-demo{% endif %}" id="statusBadge">
+      {% if model_ready %}
+      <span class="pulse"></span> Model Aktif · {{ num_classes }} Sınıf
+      {% else %}
+      <span class="pulse pulse-orange"></span> Demo Modu · Eğitim Gerekli
+      {% endif %}
+    </div>
+  </nav>
+
+  <!-- ── Hero ────────────────────────────────────────────── -->
+  <header class="hero">
+    <div class="hero-content">
+      <div class="hero-badge">EfficientNetB3 · {{ num_classes }} Bitki Hastalığı</div>
+      <h1 class="hero-title">
+        Yapay Zeka ile<br />
+        <span class="gradient-text">Bitki Hastalığı</span><br />
+        Tespiti
+      </h1>
+      <p class="hero-subtitle">
+        Kamerayı bitkiye tutun veya fotoğraf yükleyin — yapay zeka saniyeler içinde tanı koyar.
+      </p>
+      <button class="btn-history" onclick="openHistoryModal()">
+        🕒 Geçmiş Taramalarım
+      </button>
+    </div>
+  </header>
+
+  <!-- ── Main ────────────────────────────────────────────── -->
+  <main class="container">
+
+    <!-- ── Tab Seçici ───────────────────────────────────── -->
+    <div class="tab-bar">
+      <button class="tab-btn tab-active" id="tabCamera" onclick="switchTab('camera')">
+        <span>📷</span> Canlı Kamera
+      </button>
+      <button class="tab-btn" id="tabUpload" onclick="switchTab('upload')">
+        <span>📁</span> Fotoğraf Yükle
+      </button>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════ -->
+    <!-- KAMERA SEKMESİ                                    -->
+    <!-- ══════════════════════════════════════════════════ -->
+    <section class="card camera-card" id="cameraSection">
+
+      <!-- Kamera başlatılmadı -->
+      <div class="cam-idle" id="camIdle">
+        <div class="cam-idle-icon">📷</div>
+        <h2 class="cam-idle-title">Kamerayı Başlat</h2>
+        <p class="cam-idle-sub">Bitkinin yaprağını kameraya gösterin, yapay zeka anlık hastalık tespiti yapacak.</p>
+        <button class="btn-start-cam" id="startCamBtn" onclick="startCamera()">
+          <span>▶</span> Kamerayı Aç
+        </button>
+      </div>
+
+      <!-- Kamera aktif -->
+      <div class="cam-active" id="camActive" style="display:none">
+        <div class="cam-wrapper">
+          <video id="cameraFeed" autoplay playsinline muted></video>
+          <!-- Hedef çerçeve -->
+          <div class="cam-overlay">
+            <div class="cam-frame">
+              <span class="cam-corner tl"></span>
+              <span class="cam-corner tr"></span>
+              <span class="cam-corner bl"></span>
+              <span class="cam-corner br"></span>
+            </div>
+            <p class="cam-hint" id="camHint">Yaprağı çerçeve içine getirin</p>
+          </div>
+          <!-- Scanning çizgisi (analiz sırasında) -->
+          <div class="scan-line" id="scanLine" style="display:none"></div>
+        </div>
+
+        <!-- Kontroller -->
+        <div class="cam-controls">
+          <!-- Cihaz seçici -->
+          <select class="cam-select" id="cameraSelect" onchange="changeCamera()"></select>
+          <!-- ModuToggle: manuel / otomatik -->
+          <label class="toggle-wrap" title="Otomatik analiz modu">
+            <span class="toggle-label">Otomatik</span>
+            <div class="toggle" id="autoToggle" onclick="toggleAutoMode()">
+              <div class="toggle-knob"></div>
+            </div>
+          </label>
+          <!-- Manuel yakalama -->
+          <button class="btn-capture" id="captureBtn" onclick="captureAndAnalyze()">
+            <span class="capture-ring"></span>
+            <span class="capture-dot"></span>
+          </button>
+          <!-- Kamerayı kapat -->
+          <button class="btn-stop-cam" onclick="stopCamera()" title="Kamerayı kapat">✕</button>
+        </div>
+
+        <p class="cam-mode-label" id="camModeLabel">Manuel mod — butona basın</p>
+
+        <!-- Gizli canvas (yakalama için) -->
+        <canvas id="captureCanvas" style="display:none"></canvas>
+      </div>
+
+      <!-- Kamera izin hatası -->
+      <div class="cam-error" id="camError" style="display:none">
+        <div class="cam-error-icon">🚫</div>
+        <h3>Kamera erişimi reddedildi</h3>
+        <p>Tarayıcı ayarlarından kamera iznini açın ve sayfayı yenileyin.</p>
+        <button class="btn-start-cam" onclick="startCamera()">Tekrar Dene</button>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════════════════════ -->
+    <!-- FOTOĞRAF YÜKLEME SEKMESİ                         -->
+    <!-- ══════════════════════════════════════════════════ -->
+    <section class="card upload-card" id="uploadSection" style="display:none">
+      <div class="drop-zone" id="dropZone" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)"
+        ondrop="handleDrop(event)" onclick="document.getElementById('fileInput').click()" role="button" tabindex="0"
+        aria-label="Görüntü yükle">
+        <div class="drop-icon" id="dropIcon">
+          <svg viewBox="0 0 64 64" fill="none">
+            <circle cx="32" cy="32" r="28" fill="url(#circleGrad)" opacity="0.15" />
+            <path d="M32 18 L32 42 M22 28 L32 18 L42 28" stroke="url(#arrowGrad)" stroke-width="3"
+              stroke-linecap="round" stroke-linejoin="round" />
+            <path d="M18 44 H46" stroke="url(#lineGrad)" stroke-width="3" stroke-linecap="round" />
+            <defs>
+              <linearGradient id="circleGrad" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stop-color="#22c55e" />
+                <stop offset="100%" stop-color="#16a34a" />
+              </linearGradient>
+              <linearGradient id="arrowGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#4ade80" />
+                <stop offset="100%" stop-color="#22c55e" />
+              </linearGradient>
+              <linearGradient id="lineGrad" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stop-color="#16a34a" />
+                <stop offset="100%" stop-color="#4ade80" />
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+        <p class="drop-title">Görüntüyü buraya sürükleyin</p>
+        <p class="drop-sub">veya tıklayarak dosya seçin</p>
+        <p class="drop-hint">JPG, PNG, WEBP · Maks. 16 MB · Çoklu Seçim Yapabilirsiniz</p>
+        <input type="file" id="fileInput" accept="image/*" multiple hidden onchange="handleFileSelect(event)" />
+      </div>
+
+      <div class="preview-area" id="previewArea" style="display:none">
+        <img id="previewImg" src="" alt="Seçilen görüntü" class="preview-img" />
+        <div class="preview-info">
+          <span id="previewName" class="preview-name"></span>
+          <button class="btn-clear" onclick="clearImage()">✕ Temizle</button>
+        </div>
+        <button class="btn-analyze" id="analyzeBtn" onclick="analyzeFile()">
+          <span class="btn-icon">🔬</span>
+          <span>Analiz Et</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- Loading -->
+    <div class="loading-card" id="loadingCard" style="display:none">
+      <div class="loading-spinner"></div>
+      <p class="loading-text">Yapay zeka analiz ediyor<span class="dots">...</span></p>
+      <p class="loading-sub">EfficientNetB3 görüntüyü işliyor</p>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════ -->
+    <!-- SONUÇ ALANI                                       -->
+    <!-- ══════════════════════════════════════════════════ -->
+    <section class="result-section" id="resultSection" style="display:none">
+
+      <div class="demo-banner" id="demoBanner" style="display:none">
+        <span>⚠️</span>
+        <span><strong>Demo modu:</strong> Örnek çıktı. Gerçek tahmin için <code>python train.py</code>
+          çalıştırın.</span>
+      </div>
+
+      <div class="card result-card">
+        <div class="result-header">
+          <div class="result-emoji" id="resultEmoji"></div>
+          <div class="result-meta">
+            <h2 class="result-name" id="resultName"></h2>
+            <div class="result-badges">
+              <span class="severity-badge" id="severityBadge"></span>
+              <span class="confidence-badge" id="confidenceBadge"></span>
+            </div>
+          </div>
+          <img id="resultImg" src="" alt="" class="result-img" />
+        </div>
+
+        <div class="confidence-bar-wrap">
+          <div class="confidence-bar-label">
+            <span>Güven Skoru</span>
+            <span id="confidenceText" class="confidence-value"></span>
+          </div>
+          <div class="confidence-bar-bg">
+            <div class="confidence-bar-fill" id="confidenceBarFill"></div>
+          </div>
+        </div>
+
+        <p class="result-description" id="resultDescription"></p>
+        <div class="detail-grid" id="detailGrid"></div>
+      </div>
+
+      <!-- Eylem Butonları yukarıya taşındı (Daha erişilebilir) -->
+      <div class="result-actions">
+        <button class="btn-agrobot" onclick="openAgroBot()"
+          style="font-size: 1.15rem; padding: 18px 24px; box-shadow: 0 10px 25px rgba(139, 92, 246, 0.4);">💬 AgroBot
+          ile Konuş</button>
+        <div style="display: flex; gap: 12px; margin-top: 12px;">
+          <button class="btn-new" onclick="resetResult()" style="flex: 1;">➕ Yeni Analiz</button>
+          <button class="btn-pdf" onclick="downloadPDF()" style="flex: 1;">📄 PDF Rapor</button>
+        </div>
+      </div>
+
+      <div class="card top5-card">
+        <h3 class="section-title">📊 Diğer Olasılıklar</h3>
+        <ul class="top5-list" id="top5List"></ul>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════════════════════ -->
+    <!-- ÇOKLU ANALİZ (BATCH) SONUÇ TABLOSU                 -->
+    <!-- ══════════════════════════════════════════════════ -->
+    <section class="card batch-card" id="batchResultSection" style="display:none; margin-top:20px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <h3 class="section-title" style="margin:0;">📊 Çoklu Analiz Sonuçları</h3>
+        <button class="btn-history" id="btnDownloadCsv" onclick="downloadCSV()"
+          style="margin:0; padding:8px 16px; background: rgba(16, 185, 129, 0.2); border-color: rgba(16, 185, 129, 0.4); color: #4ade80;">
+          📥 CSV İndir
+        </button>
+      </div>
+
+      <div class="table-responsive">
+        <table class="batch-table">
+          <thead>
+            <tr>
+              <th>Görüntü</th>
+              <th>Dosya Adı</th>
+              <th>Hastalık / Teşhis</th>
+              <th>Güven Skoru</th>
+              <th>Durum</th>
+            </tr>
+          </thead>
+          <tbody id="batchTableBody">
+            <!-- JavaScript tarafından doldurulacak -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════════════════════ -->
+    <!-- GEÇMİŞ TARAMALAR MODAL (HISTORY)                   -->
+    <!-- ══════════════════════════════════════════════════ -->
+    <div class="history-overlay" id="historyOverlay" style="display:none;" onclick="closeHistoryModal(event)">
+      <div class="history-modal card">
+        <div class="history-header">
+          <h3>🕒 Geçmiş Taramalarım</h3>
+          <button class="btn-close-agrobot" onclick="closeHistoryModal(event, true)">✕</button>
+        </div>
+        <div class="history-content">
+          <ul class="history-list" id="historyList">
+            <!-- JavaScript tarafından doldurulacak -->
+            <li class="history-empty">Henüz kaydedilmiş bir tarama yok.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <footer class="footer">
+    <p>PlantVillage veri seti · 87.000+ görüntü · EfficientNetB3 Transfer Learning</p>
+    <p class="footer-sub">Bu uygulama profesyonel tarım danışmanlığının yerini tutmaz.</p>
+  </footer>
+
+  <!-- ══════════════════════════════════════════════════ -->
+  <!-- AGROBOT SOHBET PENCERESİ (Modal)                    -->
+  <!-- ══════════════════════════════════════════════════ -->
+  <div class="agrobot-overlay" id="agrobotOverlay" style="display:none" onclick="closeAgroBot(event)">
+    <div class="agrobot-modal card" id="agrobotModal">
+      <div class="agrobot-header">
+        <div class="agrobot-title">
+          <span class="bot-icon">🤖</span>
+          <div>
+            <h3>AgroBot</h3>
+            <span class="bot-status">Çevrimiçi Uzman</span>
+          </div>
+        </div>
+        <button class="btn-close-bot" onclick="closeAgroBot(event, true)">✕</button>
+      </div>
+
+      <div class="agrobot-messages" id="chatMessages">
+        <div class="message bot-message">
+          <div class="msg-bubble">Merhaba! Ben AgroBot. 🌿 Yapay zekamız bitkinizde bir sorun tespit etti. Bu hastalıkla
+            ilgili (tedavi, ilaçlama, yayılma riski) merak ettiğiniz her şeyi bana sorabilirsiniz.</div>
+        </div>
+      </div>
+
+      <div class="agrobot-input-area">
+        <input type="text" id="chatInput" placeholder="Soru sorun (Örn: Hangi ilacı kullanayım?)"
+          onkeypress="handleChatKeyPress(event)">
+        <button class="btn-send" onclick="sendChatMessage()">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <line x1="22" y1="2" x2="11" y2="13"></line>
+            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js')
+          .then(registration => {
+            console.log('ServiceWorker registration successful with scope: ', registration.scope);
+          }, err => {
+            console.log('ServiceWorker registration failed: ', err);
+          });
+      });
+    }
+  </script>
+</body>
+
+</html>
