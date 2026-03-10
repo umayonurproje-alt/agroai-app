@@ -279,6 +279,9 @@ def index():
 
 @app.route("/predict", methods=["POST"])
 def predict():
+    if not models:
+        load_models()
+
     if "file" not in request.files:
         return jsonify({"error": "Dosya bulunamadı"}), 400
 
@@ -409,7 +412,8 @@ def classes():
 
 
 # ─── Modelleri Yükle (Gunicorn/Üretim ortamı için) ──────────────────────────
-load_models()
+# Üretim ortamında zaman aşımını (timeout) önlemek için modeller
+# ilk "/predict" isteği geldiğinde yüklenecek (Lazy Loading).
 
 # ─── Başlat (Yerel Geliştirme İçin) ────────────────────────────────────────
 if __name__ == "__main__":
